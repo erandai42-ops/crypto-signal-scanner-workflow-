@@ -8,12 +8,39 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 jobs:
-  schedule-check:
+  scan:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
-      - name: Confirm scheduled workflow
+      - name: Get GitHub Actions identity token
+        id: oidc
         run: |
-          echo "Crypto scanner schedule started"
-          echo "UTC time: $(date -u)"
+          set -euo pipefail
+          token_json="$(curl --fail --silent --show-error \
+            -H "Authorization: Bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=floot-crypto-signal-scanner")"
+          token="$(printf '%s' "$token_json" | jq -er '.value')"
+          echo "::add-mask::$token"
+          echo "token=$token" >> "$GITHUB_OUTPUT"
+
+      - name: Run protected OKX background scanner
+        env:
+          GITHUB_OIDC_TOKEN: ${{ steps.oidc.outputs.token }}
+        run: |
+          set -euo pipefail
+          response_file="$(mktemp)"
+          status="$(curl --silent --show-error \
+            --output "$response_file" --write-out "%{http_code}" \
+            --request POST \
+            --header "Authorization: Bearer ${GITHUB_OIDC_TOKEN}" \
+            --header "Accept: application/json" \
+            "https://coincheck.floot.app/_api/background-scan")"
+          cat "$response_file"
+          if [ "$status" -lt 200 ] || [ "$status" -ge 300 ]; then
+            echo "Background scan failed: HTTP $status" >&2
+            exit 1
+          fi
+          echo "Background scan endpoint returned HTTP $status"
