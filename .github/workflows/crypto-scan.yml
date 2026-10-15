@@ -1,0 +1,19 @@
+
+name: Crypto Scanner Schedule
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0,30 * * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  schedule-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Confirm scheduled workflow
+        run: |
+          echo "Crypto scanner schedule started"
+          echo "UTC time: $(date -u)"
